@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn read_http_file(path: &Path) -> Result<Vec<project_http::HttpRequest>, Box<dyn Error>> {
+fn read_http_file(path: &Path) -> Result<Vec<httpfile::HttpRequest>, Box<dyn Error>> {
     let file = File::open(path)?;
-    project_http::parse(BufReader::new(file)).map_err(Into::into)
+    httpfile::parse(BufReader::new(file)).map_err(Into::into)
 }

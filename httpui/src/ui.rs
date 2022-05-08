@@ -4,7 +4,7 @@ use std::{
 };
 
 use crossterm::event::{self, Event, KeyCode};
-use project_http::HttpRequest;
+use httpfile::HttpRequest;
 use tui::{
     backend::Backend,
     style::{Color, Modifier, Style},
