@@ -32,7 +32,7 @@ pub enum Error {
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct HttpRequest {
     pub comment: String,
     pub method: String,
@@ -42,7 +42,7 @@ pub struct HttpRequest {
     pub body: String,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Header {
     pub name: String,
     pub value: String,
