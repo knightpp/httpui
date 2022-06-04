@@ -28,6 +28,17 @@ pub enum Error {
     InvalidHeaderName,
     #[error("invalid header value")]
     InvalidHeaderValue,
+
+    #[cfg(feature = "reqwest")]
+    #[error("invalid method")]
+    InvalidMethod,
+    #[cfg(feature = "reqwest")]
+    #[error("invalid URL")]
+    InvalidURL,
+    #[cfg(feature = "reqwest")]
+    #[error("{0}")]
+    RequestError(#[from] reqwest::Error),
+
     #[error("other error: {0}")]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -87,6 +98,27 @@ impl HttpRequest {
         }
 
         Ok(())
+    }
+
+    #[cfg(feature = "reqwest")]
+    pub fn to_reqwest(&self, client: &reqwest::Client) -> Result<reqwest::Request> {
+        let method = self.method.to_uppercase();
+        let method =
+            reqwest::Method::from_bytes(method.as_bytes()).map_err(|_| Error::InvalidMethod)?;
+        let url = reqwest::Url::parse(&self.url).map_err(|_| Error::InvalidURL)?;
+
+        let mut req = client.request(method, url);
+        if self.body.is_empty() {
+            req = req.header("content-length", "0");
+        } else {
+            req = req.body(self.body.clone());
+        }
+
+        for h in &self.headers {
+            req = req.header(h.name.to_string(), h.value.to_string());
+        }
+
+        Ok(req.build()?)
     }
 }
 

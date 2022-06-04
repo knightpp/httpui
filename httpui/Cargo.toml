@@ -6,9 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-httpfile = { path = "../httpfile" }
+httpfile = { path = "../httpfile", features = ["reqwest"] }
 tui = "0.18.0"
 argh = "0.1.7"
 crossterm = { version = "0.23.2", features = ["event-stream"] }
 tokio = { version = "1", features = ["full"] }
 futures = "0.3"
+reqwest = { version = "0.11" }
