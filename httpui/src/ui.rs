@@ -1,10 +1,12 @@
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::{
+    event::{Event, KeyCode},
+    Result,
+};
+use futures::{stream::StreamExt, FutureExt};
 use httpfile::HttpRequest;
+use tokio::{select, sync::mpsc};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
@@ -67,6 +69,7 @@ impl<T> StatefulList<T> {
 /// Check the event handling at the bottom to see how to change the state on incoming events.
 /// Check the drawing logic for items on how to specify the highlighting style for selected items.
 pub struct App {
+    channel: (mpsc::Sender<String>, mpsc::Receiver<String>),
     state: AppState,
     data: Data,
 }
@@ -162,6 +165,7 @@ impl AppState {
 impl App {
     pub fn new(items: Vec<HttpRequest>) -> App {
         App {
+            channel: mpsc::channel(32),
             data: Data {
                 items: StatefulList::with_items(items),
             },
@@ -169,46 +173,74 @@ impl App {
         }
     }
 
+    pub fn io_sender(&self) -> mpsc::Sender<String> {
+        self.channel.0.clone()
+    }
+
+    async fn receive_io(&mut self) -> Option<String> {
+        self.channel.1.recv().await
+    }
+
     fn ui<B: Backend>(&mut self, f: &mut Frame<B>) {
         self.state.ui(f, &mut self.data);
     }
 }
 
-pub fn run_app<B: Backend>(
-    terminal: &mut Terminal<B>,
-    mut app: App,
-    tick_rate: Duration,
-) -> io::Result<()> {
-    let mut last_tick = Instant::now();
-    loop {
-        terminal.draw(|f| app.ui(f))?;
+pub async fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
+    terminal.draw(|f| app.ui(f))?;
+    let mut event_stream = crossterm::event::EventStream::new();
 
-        let timeout = tick_rate
-            .checked_sub(last_tick.elapsed())
-            .unwrap_or_else(|| Duration::from_secs(0));
-        if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => return Ok(()),
-                    KeyCode::Left => app.data.items.unselect(),
-                    KeyCode::Down => app.data.items.next(),
-                    KeyCode::Up => app.data.items.previous(),
-                    KeyCode::Enter => {
-                        let selected = app.data.items.state.selected();
-                        // app.data.items.items.get(index)
-                        let selected = selected.map(|i| app.data.items.items.get(i)).flatten();
-                        if let Some(selected) = selected {
-                            app.state = AppState::DoingRequest(selected.clone());
-                        }
-                    }
-                    KeyCode::Esc => app.state = AppState::ShowingList,
-                    _ => {}
+    // for event in event_stream.next().fuse().await {
+    loop {
+        let event = event_stream.next().fuse();
+
+        select! {
+            event = event => {
+                 if let Some(x) = event {
+                    handle_terminal_events(&mut app, x?)?;
+                } else {
+                    break;
+                };
+            }
+            msg = app.receive_io() => {
+                if let Some(msg) = msg {
+                    // handle_io_events(&mut app, msg)?;
+                    panic!("{}", msg);
+                } else {
+                    break;
+                };
+            }
+        };
+
+        terminal.draw(|f| app.ui(f))?;
+    }
+    Ok(())
+}
+
+fn handle_terminal_events(app: &mut App, event: Event) -> Result<()> {
+    if let Event::Key(key) = event {
+        match key.code {
+            KeyCode::Char('q') => return Ok(()),
+            KeyCode::Left => app.data.items.unselect(),
+            KeyCode::Down => app.data.items.next(),
+            KeyCode::Up => app.data.items.previous(),
+            KeyCode::Enter => {
+                let selected = app.data.items.state.selected();
+                // app.data.items.items.get(index)
+                let selected = selected.and_then(|i| app.data.items.items.get(i));
+                if let Some(selected) = selected {
+                    app.state = AppState::DoingRequest(selected.clone());
+
+                    let io = app.io_sender();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(1000)).await;
+                        io.send("".to_string()).await.unwrap();
+                    });
                 }
             }
-        }
-        if last_tick.elapsed() >= tick_rate {
-            // app.on_tick();
-            last_tick = Instant::now();
+            KeyCode::Esc => app.state = AppState::ShowingList,
+            _ => {}
         }
     }
+    Ok(())
 }

@@ -3,7 +3,6 @@ use std::{
     fs::File,
     io::{self, BufReader},
     path::Path,
-    time::Duration,
 };
 
 use crossterm::{
@@ -17,7 +16,8 @@ mod ui;
 use ui::*;
 mod args;
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     let args = args::parse();
 
     let https = read_http_file(&args.path)?;
@@ -30,9 +30,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let tick_rate = Duration::from_millis(250);
     let app = App::new(https);
-    let res = run_app(&mut terminal, app, tick_rate);
+    let res = run_app(&mut terminal, app).await;
 
     // restore terminal
     disable_raw_mode()?;
