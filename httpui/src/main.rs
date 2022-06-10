@@ -3,6 +3,7 @@ use std::{
     fs::File,
     io::{self, BufReader},
     path::Path,
+    time::Duration,
 };
 
 use crossterm::{
@@ -31,7 +32,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // create app and run it
     let app = App::new(https);
-    let res = run_app(&mut terminal, app).await;
+    let tick_rate = Duration::from_millis(200);
+    let res = run_app(&mut terminal, app, tick_rate).await;
 
     // restore terminal
     disable_raw_mode()?;

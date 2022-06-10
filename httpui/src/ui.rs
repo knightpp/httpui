@@ -1,12 +1,9 @@
-use std::time::Duration;
-
-use crossterm::{
-    event::{Event, KeyCode},
-    Result,
-};
+use anyhow::{anyhow, Result};
+use crossterm::event::{Event, KeyCode};
 use futures::{stream::StreamExt, FutureExt};
 use httpfile::HttpRequest;
-use tokio::{select, sync::mpsc};
+use std::time::Duration;
+use tokio::{select, sync::mpsc, time};
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
@@ -78,6 +75,11 @@ pub struct App {
     request: Option<HttpRequest>,
 }
 
+enum AppAction {
+    Exit,
+    Continue,
+}
+
 struct Data {
     items: StatefulList<HttpRequest>,
 }
@@ -107,6 +109,49 @@ impl App {
 
     async fn receive_io(&mut self) -> Option<String> {
         self.channel.1.recv().await
+    }
+
+    async fn on_event(&mut self, event: Event) -> Result<AppAction> {
+        if let Event::Key(key) = event {
+            match key.code {
+                KeyCode::Char('q') => return Ok(AppAction::Exit),
+                KeyCode::Left => self.data.items.unselect(),
+                KeyCode::Down => self.data.items.next(),
+                KeyCode::Up => self.data.items.previous(),
+                KeyCode::Enter => {
+                    let selected = self.data.items.state.selected();
+                    // app.data.items.items.get(index)
+                    let selected = selected.and_then(|i| self.data.items.items.get(i));
+                    if let Some(selected) = selected {
+                        self.state = AppState::DoingRequest;
+                        self.request = Some(selected.clone());
+
+                        let io = self.io_sender();
+                        // TOOD: remove unwrap
+                        let req = selected.to_reqwest(&self.client).unwrap();
+                        let client = self.client.clone();
+
+                        tokio::spawn(async move {
+                            let resp = client.execute(req).await.unwrap();
+                            let body = resp.text().await.unwrap();
+                            io.send(body).await.unwrap();
+                        });
+                    }
+                }
+                KeyCode::Esc => self.state = AppState::ShowingList,
+                _ => {}
+            }
+        }
+        Ok(AppAction::Continue)
+    }
+
+    async fn on_tick(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn on_io(&mut self, msg: String) -> Result<()> {
+        self.resp = Some(msg);
+        Ok(())
     }
 
     fn ui<B: Backend>(&mut self, f: &mut Frame<B>) {
@@ -196,70 +241,43 @@ impl App {
     }
 }
 
-pub async fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
+pub async fn run_app<B: Backend>(
+    terminal: &mut Terminal<B>,
+    mut app: App,
+    tick: Duration,
+) -> Result<()> {
     terminal.draw(|f| app.ui(f))?;
-    let mut event_stream = crossterm::event::EventStream::new();
 
-    // for event in event_stream.next().fuse().await {
+    let mut event_stream = crossterm::event::EventStream::new();
+    let mut interval = time::interval(tick);
+
     'outer: loop {
         let event = event_stream.next().fuse();
+        let tick = interval.tick();
 
         select! {
             event = event => {
-                 if let Some(x) = event {
-                    let exit = handle_terminal_events(&mut app, x?)?;
-                    if exit{
+                if let Some(e ) = event{
+                    if let AppAction::Exit = app.on_event(e?).await?{
                         break 'outer;
                     }
-                } else {
+                }else{
                     break 'outer;
-                };
+                }
+            }
+            _ = tick =>{
+                app.on_tick().await?;
             }
             msg = app.receive_io() => {
                 if let Some(msg) = msg {
-                    app.resp = Some(msg);
-                    // handle_io_events(&mut app, msg)?;
-                } else {
-                    break;
-                };
+                    app.on_io(msg).await?;
+                }else{
+                    return Err(anyhow!("No message received"));
+                }
             }
-        };
+        }
 
         terminal.draw(|f| app.ui(f))?;
     }
     Ok(())
-}
-
-fn handle_terminal_events(app: &mut App, event: Event) -> Result<bool> {
-    if let Event::Key(key) = event {
-        match key.code {
-            KeyCode::Char('q') => return Ok(true),
-            KeyCode::Left => app.data.items.unselect(),
-            KeyCode::Down => app.data.items.next(),
-            KeyCode::Up => app.data.items.previous(),
-            KeyCode::Enter => {
-                let selected = app.data.items.state.selected();
-                // app.data.items.items.get(index)
-                let selected = selected.and_then(|i| app.data.items.items.get(i));
-                if let Some(selected) = selected {
-                    app.state = AppState::DoingRequest;
-                    app.request = Some(selected.clone());
-
-                    let io = app.io_sender();
-                    // TOOD: remove unwrap
-                    let req = selected.to_reqwest(&app.client).unwrap();
-                    let client = app.client.clone();
-
-                    tokio::spawn(async move {
-                        let resp = client.execute(req).await.unwrap();
-                        let body = resp.text().await.unwrap();
-                        io.send(body).await.unwrap();
-                    });
-                }
-            }
-            KeyCode::Esc => app.state = AppState::ShowingList,
-            _ => {}
-        }
-    }
-    Ok(false)
 }
