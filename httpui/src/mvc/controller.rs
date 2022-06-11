@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyEvent};
 use futures::{stream::StreamExt, FutureExt};
 use httpfile::HttpRequest;
 use tokio::time;
@@ -54,7 +54,7 @@ impl Controller {
             select! {
                 event = event => {
                     if let Some(e ) = event{
-                        if let AppAction::Exit = self.on_event(e?).await?{
+                        if let AppAction::Exit = self.on_event(e?)?{
                             break 'outer;
                         }
                     }else{
@@ -80,7 +80,7 @@ impl Controller {
 }
 
 impl Controller {
-    pub fn io_sender(&self) -> mpsc::Sender<String> {
+    fn io_sender(&self) -> mpsc::Sender<String> {
         self.channel.0.clone()
     }
 
@@ -88,38 +88,69 @@ impl Controller {
         self.channel.1.recv().await
     }
 
-    async fn on_event(&mut self, event: Event) -> Result<AppAction> {
-        if let Event::Key(key) = event {
-            match key.code {
-                KeyCode::Char('q') => return Ok(AppAction::Exit),
-                KeyCode::Left => self.model.items.unselect(),
-                KeyCode::Down => self.model.items.next(),
-                KeyCode::Up => self.model.items.previous(),
-                KeyCode::Enter => {
-                    let selected = self.model.items.state.selected();
-                    // app.data.items.items.get(index)
-                    let selected = selected.and_then(|i| self.model.items.items.get(i));
-                    if let Some(selected) = selected {
-                        self.model.state = AppState::DoingRequest;
-                        self.model.request = Some(selected.clone());
-
-                        let io = self.io_sender();
-                        // TOOD: remove unwrap
-                        let req = selected.to_reqwest(&self.client).unwrap();
-                        let client = self.client.clone();
-
-                        tokio::spawn(async move {
-                            let resp = client.execute(req).await.unwrap();
-                            let body = resp.text().await.unwrap();
-                            io.send(body).await.unwrap();
-                        });
-                    }
-                }
-                KeyCode::Esc => self.model.state = AppState::ShowingList,
-                _ => {}
-            }
+    fn on_event(&mut self, event: Event) -> Result<AppAction> {
+        match event {
+            Event::Key(k) => self.handle_keyboard_event(k),
+            _ => Ok(AppAction::Continue),
         }
+    }
+
+    fn handle_keyboard_event(&mut self, key: KeyEvent) -> Result<AppAction> {
+        match key.code {
+            KeyCode::Char('q') => return Ok(AppAction::Exit),
+            KeyCode::Left => self.model.items.unselect(),
+            KeyCode::Down => self.model.items.next(),
+            KeyCode::Up => self.model.items.previous(),
+            KeyCode::Enter => self.handle_enter_key()?,
+            KeyCode::Esc => self.model.state = AppState::ShowingList,
+            _ => {}
+        };
         Ok(AppAction::Continue)
+    }
+
+    fn handle_enter_key(&mut self) -> Result<()> {
+        let selected = self
+            .model
+            .items
+            .state
+            .selected()
+            .and_then(|i| self.model.items.items.get(i));
+        let selected = match selected {
+            Some(req) => req.clone(),
+            None => return Ok(()),
+        };
+        self.handle_do_request(selected)?;
+        Ok(())
+    }
+
+    fn handle_do_request(&mut self, req: HttpRequest) -> Result<()> {
+        self.model.state = AppState::DoingRequest;
+        self.model.request = Some(req.clone());
+
+        let io = self.io_sender();
+        let req = req.to_reqwest(&self.client)?;
+        let client = self.client.clone();
+
+        tokio::spawn(async move {
+            let resp = match client.execute(req).await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    io.send(err.to_string()).await.expect("msg to be sent");
+                    return;
+                }
+            };
+
+            let body = match resp.text().await {
+                Ok(body) => body,
+                Err(err) => {
+                    io.send(err.to_string()).await.expect("msg to be sent");
+                    return;
+                }
+            };
+
+            io.send(body).await.expect("msg to be sent");
+        });
+        Ok(())
     }
 
     async fn on_tick(&mut self) -> Result<()> {
