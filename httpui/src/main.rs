@@ -11,12 +11,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use mvc::Controller;
+use httpui::mvc::Controller;
 use tui::{backend::CrosstermBackend, Terminal};
 
 mod args;
-mod mvc;
-mod widgets;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -33,6 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // create app and run it
     // let app = App::new(https);
+
     let app = Controller::new(https);
     let tick_rate = Duration::from_millis(200);
     let res = app.run(&mut terminal, tick_rate).await;
