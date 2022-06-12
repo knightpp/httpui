@@ -16,6 +16,7 @@ use tui::{backend::CrosstermBackend, Terminal};
 
 mod args;
 mod mvc;
+mod widgets;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

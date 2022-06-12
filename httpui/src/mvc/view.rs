@@ -7,6 +7,8 @@ use tui::{
     Frame,
 };
 
+use crate::widgets::Spinner;
+
 use super::{AppState, Model};
 
 pub struct View {}
@@ -24,7 +26,6 @@ impl View {
     }
 
     fn showing_list_ui<B: Backend>(&mut self, f: &mut Frame<B>, model: &mut Model) {
-        // Iterate through all elements in the `items` app and append some debug text to it.
         let items: Vec<ListItem> = model
             .items
             .items
@@ -64,7 +65,7 @@ impl View {
         f.render_stateful_widget(items, f.size(), &mut model.items.state);
     }
 
-    fn doing_request_ui<B: Backend>(&mut self, f: &mut Frame<B>, model: &Model) {
+    fn doing_request_ui<B: Backend>(&mut self, f: &mut Frame<B>, model: &mut Model) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
@@ -96,7 +97,11 @@ impl View {
                 let response_part = Paragraph::new(body.to_string()).block(response_block);
                 f.render_widget(response_part, chunks[1]);
             } else {
-                f.render_widget(response_block, chunks[1]);
+                let spinner = Spinner::clock()
+                    .style(Style::default().fg(Color::Yellow))
+                    .block(response_block);
+                f.render_stateful_widget(spinner, chunks[1], &mut model.spinner_state);
+                // f.render_widget(response_block, chunks[1]);
             }
         }
     }
