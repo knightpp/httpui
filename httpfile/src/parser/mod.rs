@@ -102,21 +102,31 @@ impl HttpRequest {
 
     #[cfg(feature = "reqwest")]
     pub fn to_reqwest(&self, client: &reqwest::Client) -> Result<reqwest::Request> {
-        let method = self.method.to_uppercase();
-        let method =
-            reqwest::Method::from_bytes(method.as_bytes()).map_err(|_| Error::InvalidMethod)?;
+        let method = {
+            let method_upper = self.method.to_uppercase();
+            reqwest::Method::from_bytes(method_upper.as_bytes())
+                .map_err(|_| Error::InvalidMethod)?
+        };
         let url = reqwest::Url::parse(&self.url).map_err(|_| Error::InvalidURL)?;
 
         let mut req = client.request(method, url);
-        if self.body.is_empty() {
-            req = req.header("content-length", "0");
-        } else {
+        if !self.body.is_empty() {
             req = req.body(self.body.clone());
         }
 
         for h in &self.headers {
             req = req.header(h.name.to_string(), h.value.to_string());
         }
+
+        // use reqwest::Version;
+        // req = match self.version.as_str() {
+        //     "HTTP/0.9" => req.version(Version::HTTP_09),
+        //     "HTTP/1.0" => req.version(Version::HTTP_10),
+        //     "HTTP/1.1" => req.version(Version::HTTP_11),
+        //     "HTTP/2.0" => req.version(Version::HTTP_2),
+        //     "HTTP/3.0" => req.version(Version::HTTP_3),
+        //     _ => req.version(Version::default()),
+        // };
 
         Ok(req.build()?)
     }

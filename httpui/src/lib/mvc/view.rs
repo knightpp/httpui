@@ -7,9 +7,8 @@ use tui::{
     Frame,
 };
 
-use crate::widgets::Spinner;
-
 use super::{AppState, Model};
+use crate::widgets::Spinner;
 
 pub struct View {}
 
@@ -72,14 +71,19 @@ impl View {
             .split(f.size());
 
         {
-            let mut text = vec![Spans::from(Span::raw(""))];
+            let mut text = vec![Spans::from("")];
             let req = model.request.clone().unwrap();
             req.headers
                 .iter()
-                .map(|header| Spans::from(Span::raw(format!("{}: {}", header.name, header.value))))
+                .map(|header| Spans::from(format!("{}: {}", header.name, header.value)))
                 .for_each(|spans| text.push(spans));
-            text.push(Spans::from(Span::raw("")));
-            text.push(Span::raw(req.body.clone()).into());
+            text.push(Spans::from(""));
+
+            text.extend(
+                req.body
+                    .split("\n")
+                    .map(|line| Spans::from(vec![Span::raw(line), Span::raw("")])),
+            );
 
             let request_block = Block::default()
                 .title(format!("{} {} {}", req.method, req.url, req.version))

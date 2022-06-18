@@ -19,21 +19,25 @@ mod args;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = args::parse();
+    let https = read_http_file(&args.path)?
+        .into_iter()
+        .map(|mut req| {
+            req.body = serde_json::from_str::<serde_json::Value>(&req.body)
+                .and_then(|obj| serde_json::to_string_pretty(&obj))
+                .unwrap_or(req.body);
+            req
+        })
+        .collect();
 
-    let https = read_http_file(&args.path)?;
-
-    // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    // create app and run it
-    // let app = App::new(https);
-
     let app = Controller::new(https);
     let tick_rate = Duration::from_millis(200);
+
     let res = app.run(&mut terminal, tick_rate).await;
 
     // restore terminal

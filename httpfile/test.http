@@ -13,3 +13,9 @@ content-type: application/json
 ###
 # GET without body and headers
 POST https://example.com/ HTTP/2.0
+
+###
+# GET echo server
+# GET http://127.0.0.1:2000 HTTP/2.0
+GET http://localhost:2000 HTTP/2.0
+

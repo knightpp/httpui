@@ -1,5 +1,6 @@
-use crate::widgets::{SpinnerState, StatefulList};
 use httpfile::HttpRequest;
+
+use crate::widgets::{SpinnerState, StatefulList};
 
 pub struct Model {
     pub state: AppState,

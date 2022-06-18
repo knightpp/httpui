@@ -54,7 +54,7 @@ impl Controller {
             select! {
                 event = event => {
                     if let Some(e ) = event{
-                        if let AppAction::Exit = self.on_event(e?)?{
+                        if let AppAction::Exit = self.on_event(e?).await?{
                             break 'outer;
                         }
                     }else{
@@ -88,27 +88,27 @@ impl Controller {
         self.channel.1.recv().await
     }
 
-    fn on_event(&mut self, event: Event) -> Result<AppAction> {
+    async fn on_event(&mut self, event: Event) -> Result<AppAction> {
         match event {
-            Event::Key(k) => self.handle_keyboard_event(k),
+            Event::Key(k) => self.handle_keyboard_event(k).await,
             _ => Ok(AppAction::Continue),
         }
     }
 
-    fn handle_keyboard_event(&mut self, key: KeyEvent) -> Result<AppAction> {
+    async fn handle_keyboard_event(&mut self, key: KeyEvent) -> Result<AppAction> {
         match key.code {
             KeyCode::Char('q') => return Ok(AppAction::Exit),
             KeyCode::Left => self.model.items.unselect(),
             KeyCode::Down => self.model.items.next(),
             KeyCode::Up => self.model.items.previous(),
-            KeyCode::Enter => self.handle_enter_key()?,
+            KeyCode::Enter => self.handle_enter_key().await?,
             KeyCode::Esc => self.model.state = AppState::ShowingList,
             _ => {}
         };
         Ok(AppAction::Continue)
     }
 
-    fn handle_enter_key(&mut self) -> Result<()> {
+    async fn handle_enter_key(&mut self) -> Result<()> {
         let selected = self
             .model
             .items
@@ -119,11 +119,11 @@ impl Controller {
             Some(req) => req.clone(),
             None => return Ok(()),
         };
-        self.handle_do_request(selected)?;
+        self.handle_do_request(selected).await?;
         Ok(())
     }
 
-    fn handle_do_request(&mut self, req: HttpRequest) -> Result<()> {
+    async fn handle_do_request(&mut self, req: HttpRequest) -> Result<()> {
         self.model.state = AppState::DoingRequest;
         self.model.request = Some(req.clone());
 
