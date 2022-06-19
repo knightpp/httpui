@@ -98,7 +98,9 @@ impl View {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::White));
             if let Some(body) = &model.resp {
-                let response_part = Paragraph::new(body.to_string()).block(response_block);
+                let response_part = Paragraph::new(body.to_string())
+                    .block(response_block)
+                    .scroll(model.scroll.to_tuple());
                 f.render_widget(response_part, chunks[1]);
             } else {
                 let spinner = Spinner::clock()

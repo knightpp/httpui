@@ -98,13 +98,37 @@ impl Controller {
     async fn handle_keyboard_event(&mut self, key: KeyEvent) -> Result<AppAction> {
         match key.code {
             KeyCode::Char('q') => return Ok(AppAction::Exit),
-            KeyCode::Left => self.model.items.unselect(),
-            KeyCode::Down => self.model.items.next(),
-            KeyCode::Up => self.model.items.previous(),
-            KeyCode::Enter => self.handle_enter_key().await?,
-            KeyCode::Esc => self.model.state = AppState::ShowingList,
+            KeyCode::Enter => {
+                self.handle_enter_key().await?;
+                return Ok(AppAction::Continue);
+            }
+            KeyCode::Esc => {
+                self.model.state = AppState::ShowingList;
+                return Ok(AppAction::Continue);
+            }
             _ => {}
         };
+
+        if let AppState::DoingRequest = self.model.state {
+            let offset = match key.code {
+                KeyCode::Left => (-1, 0),
+                KeyCode::Right => (1, 0),
+                KeyCode::Up => (0, -1),
+                KeyCode::Down => (0, 1),
+                KeyCode::PageDown => (0, 10),
+                KeyCode::PageUp => (0, -10),
+                _ => (0, 0),
+            };
+            self.model.scroll.scroll(offset.0, offset.1);
+        } else {
+            match key.code {
+                KeyCode::Left => self.model.items.unselect(),
+                KeyCode::Down => self.model.items.next(),
+                KeyCode::Up => self.model.items.previous(),
+                _ => {}
+            };
+        }
+
         Ok(AppAction::Continue)
     }
 
